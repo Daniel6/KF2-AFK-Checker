@@ -15,23 +15,22 @@ var Controller PlayerOwner;
 var PlayerController PCOwner;
 var PrevState pState;
 var transient float endTime;
-const timeout = 10.f; // Seconds of AFK before kick
+
+const timeout = 15.f; // Seconds of AFK before kick
+const warnTime = 10.f; // Seconds of AFK before warning
 
 function PostBeginPlay()
 {
-	`log("AFK Checker");
 	PlayerOwner = Controller(Owner);
 	PCOwner = PlayerController(Owner);
 	if (PlayerOwner == None)
 	{
-		`log("AFK Checker Destroy");
 		Destroy();
 	}
 	else
 	{
 		pState.prevLocation = PCOwner.Pawn.Location;
 		pState.prevRotation = PCOwner.Pawn.Rotation;
-		`log("Init " $ pState.prevLocation $ " " $ pState.prevRotation);
 	}
 }
 
@@ -50,6 +49,16 @@ auto state CheckAFK
 		pState.prevRotation = PlayerOwner.Pawn.Rotation;
 	}
 
+	final function bool playerShouldBeActive()
+	{
+		return PlayerOwner.Pawn != None && 
+		PlayerOwner.Pawn.IsAliveAndWell() && 
+		!PlayerOwner.Pawn.IsA('KFPawn_Monster') && 
+		!KFGameInfo(WorldInfo.Game).MyKFGRI.bTraderIsOpen && 
+		KFGameInfo(WorldInfo.Game).MyKFGRI.bMatchHasBegun && 
+		!KFGameInfo(WorldInfo.Game).MyKFGRI.bMatchIsOver;
+	}
+
 Begin:
 	// Wait a little when the player first spawns in
 	Sleep(10.f+FRand()*15.f);
@@ -57,32 +66,41 @@ Begin:
 		Destroy();
 Loop:
 	// Pause AFK checks while players cant play
-	if (PlayerOwner.Pawn != None && 
-		PlayerOwner.Pawn.IsAliveAndWell() && 
-		!PlayerOwner.Pawn.IsA('KFPawn_Monster') && 
-		!KFGameInfo(WorldInfo.Game).MyKFGRI.bTraderIsOpen && 
-		KFGameInfo(WorldInfo.Game).MyKFGRI.bMatchHasBegun && 
-		!KFGameInfo(WorldInfo.Game).MyKFGRI.bMatchIsOver)
+	if (playerShouldBeActive())
 	{
 		if (isAFK())
 		{
 			endTime = WorldInfo.TimeSeconds + timeout;
-			KFPlayerController(PCOwner).MyGFxHUD.DisplayPriorityMessage("You are AFK", "", 4.f);
-			while (isAFK())
+			while (isAFK() && playerShouldBeActive())
 			{
 				updateState();
-				// PCOwner.ClientMessage((endTime - WorldInfo.TimeSeconds)  $ " seconds till kick", 'LowCriticalEvent');
-				KFPlayerController(PCOwner).MyGFxHUD.ShowNonCriticalMessage(Round(endTime - WorldInfo.TimeSeconds)  $ " seconds till kick");
-				if (endTime - WorldInfo.TimeSeconds <= 0)
+				if (Round(endTime - WorldInfo.TimeSeconds) == Round(warnTime))
 				{
+					// Display big AFK notice when appropriate time left in AFK countdown
+					KFPlayerController(PCOwner).MyGFxHUD.DisplayPriorityMessage("You are AFK", "", 4.f);
+				}
+				else if (endTime - WorldInfo.TimeSeconds < warnTime && endTime - WorldInfo.TimeSeconds > 0)
+				{
+					// Display countdown ticker after big flashy warning has appeared
+					KFPlayerController(PCOwner).MyGFxHUD.ShowNonCriticalMessage(Round(endTime - WorldInfo.TimeSeconds)  $ " seconds till kick");
+				}
+				else if (endTime - WorldInfo.TimeSeconds <= 0)
+				{
+					// When time has run out, kick player
 					WorldInfo.Game.KickIdler(PCOwner);
+					// If normal kick method does not work consider having the client run the disconnect console command
+					// ConsoleCommand("disconnect");
 					break;
+				}
+				else
+				{
+					// Do nothing
 				}
 				Sleep(1.f);
 			}
 		}
 
-	updateState();
+		updateState();
 	}
 	Sleep(1.f);
 	GoTo'Loop';
