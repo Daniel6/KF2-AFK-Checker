@@ -34,6 +34,26 @@ function PostBeginPlay()
 	}
 }
 
+reliable client function displayAFKWarning()
+{
+	local KFPlayerController KFPC;
+	foreach LocalPlayerControllers(class'KFPlayerController', KFPC)
+	{
+		// If for some reason the client has 2 controllers (splitscreen) they will both get the popup
+		KFPC.MyGFxHUD.DisplayPriorityMessage("You are AFK", "", 4.f);
+	}
+}
+
+reliable client function displayAFKTimer(int secondsRemaining)
+{
+	local KFPlayerController KFPC;
+	foreach LocalPlayerControllers(class'KFPlayerController', KFPC)
+	{
+		// If for some reason the client has 2 controllers (splitscreen) they will both get the popup
+		KFPC.MyGFxHUD.ShowNonCriticalMessage(secondsRemaining $ " seconds until you are kicked");
+	}
+}
+
 auto state CheckAFK
 {
 	// A player is considered AFK if they are not moving or looking around
@@ -62,9 +82,9 @@ auto state CheckAFK
 Begin:
 	// Wait a little when the player first spawns in
 	Sleep(10.f+FRand()*15.f);
+Loop:
 	if (PlayerOwner == None)
 		Destroy();
-Loop:
 	// Pause AFK checks while players cant play
 	if (playerShouldBeActive())
 	{
@@ -77,19 +97,17 @@ Loop:
 				if (Round(endTime - WorldInfo.TimeSeconds) == Round(warnTime))
 				{
 					// Display big AFK notice when appropriate time left in AFK countdown
-					KFPlayerController(PCOwner).MyGFxHUD.DisplayPriorityMessage("You are AFK", "", 4.f);
+					displayAFKWarning();
 				}
 				else if (endTime - WorldInfo.TimeSeconds < warnTime && endTime - WorldInfo.TimeSeconds > 0)
 				{
 					// Display countdown ticker after big flashy warning has appeared
-					KFPlayerController(PCOwner).MyGFxHUD.ShowNonCriticalMessage(Round(endTime - WorldInfo.TimeSeconds)  $ " seconds till kick");
+					displayAFKTimer(Round(endTime - WorldInfo.TimeSeconds));
 				}
 				else if (endTime - WorldInfo.TimeSeconds <= 0)
 				{
 					// When time has run out, kick player
 					WorldInfo.Game.KickIdler(PCOwner);
-					// If normal kick method does not work consider having the client run the disconnect console command
-					// ConsoleCommand("disconnect");
 					break;
 				}
 				else
